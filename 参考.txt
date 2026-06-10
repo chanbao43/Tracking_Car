@@ -1,0 +1,346 @@
+#include <reg51.h>
+// ????(??HJduino Arduino??)
+sbit P1_2=P1^2;
+sbit P1_3=P1^3;
+sbit P1_4=P1^4;
+sbit P1_5=P1^5;
+sbit P1_6=P1^6;
+sbit P1_7=P1^7;
+sbit P3_3=P3^3;
+sbit P3_4=P3^4;
+sbit P3_7=P3^7;
+
+// ????
+#define uchar unsigned char
+#define uint  unsigned int
+
+// ?????
+#define Left_IRSenor_Track   P3_4
+#define Right_IRSenor_Track  P3_3
+
+// ??PWM??
+#define SPEED               8	 
+#define Left_Motor_PWM	   P1_4	 
+#define Right_Motor_PWM	   P1_5	 
+
+// ??????
+#define Left_Motor_Go      {P1_2=0,P1_3=1;}
+#define Left_Motor_Back    {P1_2=1,P1_3=0;}
+#define Left_Motor_Stop    {P1_2=0,P1_3=0;}
+#define Right_Motor_Go     {P1_6=1,P1_7=0;}
+#define Right_Motor_Back   {P1_6=0,P1_7=1;}
+#define Right_Motor_Stop   {P1_6=0,P1_7=0;}
+
+// ??PWM??
+unsigned char Left_PWM_Value=0;
+unsigned char Left_Drive_Value=0;
+unsigned char Right_PWM_Value =0;
+unsigned char Right_Drive_Value=0;
+bit Left_moto_stop =1;
+bit Right_moto_stop=1;
+
+// ?????
+sbit POSSEL = P2^7;
+sbit SEGSEL = P2^6;
+uchar POSCode[]={0xff,0xfe,0xfd,0xfb,0xf7,0xef,0xdf,0xbf,0x7f};
+uchar code SEGCode[]={0x3f,0x06,0x5b,0x4f,0x66,0x6d,0x7d,0x07,
+0x7f,0x6f,0x77,0x7c,0x39,0x5e,0x79,0x71,0x00};
+
+// ????
+unsigned int Line=0;        // ?????
+bit Black_Line_Detected=0;  
+uchar Debounce_Cnt=0;       
+bit Turn_Flag = 0;         // 0:??? 1:???(???)
+bit Turning = 0;            // ??????
+bit Special_Turn_Flag = 0;  // ??????(??????90°??)
+
+// ????????
+uchar Display_Tens = 0;     // ??
+uchar Display_Ones = 0;     // ??
+
+// ????
+void delay_ms(unsigned int n)
+{
+    unsigned int i,j;
+    for(i=n; i>0; i--)
+        for(j=114; j>0; j--);
+}
+
+// ??????? - ?????
+void LEDTube_Show(void)
+{
+    // ????
+    P0=POSCode[1];
+    POSSEL=1;
+    POSSEL=0;
+    P0=SEGCode[Display_Tens];
+    SEGSEL=1;
+    SEGSEL=0;
+    delay_ms(2);
+    
+    // ????
+    P0=POSCode[2];
+    POSSEL=1;
+    POSSEL=0;
+    P0=SEGCode[Display_Ones];
+    SEGSEL=1;
+    SEGSEL=0;
+    delay_ms(2);
+}
+
+// ?????????
+void Update_Display(void)
+{
+    Display_Tens = Line / 10;
+    Display_Ones = Line % 10;
+}
+
+// ??????
+void GoForward(void)
+{
+    Left_Drive_Value=SPEED;
+    Right_Drive_Value=SPEED;
+    Left_Motor_Go;
+    Right_Motor_Go;
+}
+void GoLeft(void)
+{
+    Left_Drive_Value=SPEED;
+    Right_Drive_Value=SPEED;
+    Right_Motor_Go;
+    Left_Motor_Back;
+}
+void GoRight(void)
+{
+    Left_Drive_Value=SPEED;
+    Right_Drive_Value=SPEED;
+    Left_Motor_Go;
+    Right_Motor_Back;
+}
+void Stop(void)
+{
+    Left_Motor_Stop;
+    Right_Motor_Stop;
+}
+
+// ??90°?? - ???,????I/O?,???PWM
+void Turn_Left_90(void)
+{
+    Turning = 1;
+    ET0 = 0;  // ???????
+    
+    // ??????,???PWM(??)
+    // ????:????,????
+    P1_2 = 1; P1_3 = 0;  // ????
+    P1_6 = 1; P1_7 = 0;  // ????
+    P1_4 = 1;  // ?PWM??
+    P1_5 = 1;  // ?PWM??
+    
+    // 90°???? - ?????????(???200ms??)
+    delay_ms(140);
+    
+    // ??
+    P1_2 = 0; P1_3 = 0;
+    P1_6 = 0; P1_7 = 0;
+    P1_4 = 0;
+    P1_5 = 0;
+    delay_ms(100);
+    
+    ET0 = 1;  // ?????????
+    Turning = 0;
+}
+
+// 180°???? - ???,????I/O?
+void Turn_180(void)
+{
+    Turning = 1;
+    ET0 = 0;  // ???????
+    
+    // ??????,???PWM(??)
+    // ????180°:????,????
+    P1_2 = 0; P1_3 = 1;  // ????
+    P1_6 = 0; P1_7 = 1;  // ????
+    P1_4 = 1;  // ?PWM??
+    P1_5 = 1;  // ?PWM??
+    
+    // 180°???? - ?????????
+    // ??90°?200ms,180°???400-450ms
+    delay_ms(250);
+    
+    // ??
+    P1_2 = 0; P1_3 = 0;
+    P1_6 = 0; P1_7 = 0;
+    P1_4 = 0;
+    P1_5 = 0;
+    delay_ms(200);
+    
+    ET0 = 1;  // ?????????
+    Turning = 0;
+}
+
+// PWM????
+void Left_Motor_PWM_Adjust(void)
+{
+   if(Left_moto_stop)
+   {
+       if(Left_PWM_Value<=Left_Drive_Value)
+           Left_Motor_PWM=1;
+       else
+           Left_Motor_PWM=0;
+       if(Left_PWM_Value>=20)
+           Left_PWM_Value=0;
+   }
+   else
+   {
+       Left_Motor_PWM=0;
+   }
+}
+void Right_Motor_PWM_Adjust(void)
+{
+  if(Right_moto_stop)
+   {
+        if(Right_PWM_Value<=Right_Drive_Value)
+            Right_Motor_PWM=1;
+        else
+            Right_Motor_PWM=0;
+        if(Right_PWM_Value>=20)
+            Right_PWM_Value=0;
+   }
+   else
+   {
+        Right_Motor_PWM=0;
+   }
+}
+
+// ?????? - ???????????90°??
+void Check_Special_Turn(void)
+{
+    // ???????????
+    if(Turn_Flag == 1)
+    {
+        // ????10?11?14?15?????90°
+        if(Line == 10 || Line == 11 || Line == 14 || Line == 15)
+        {
+            if(Special_Turn_Flag == 0)  // ??????
+            {
+                Special_Turn_Flag = 1;
+                Stop();
+                delay_ms(50);
+                Turn_Left_90();
+                delay_ms(50);
+            }
+        }
+        else
+        {
+            Special_Turn_Flag = 0;  // ????
+        }
+    }
+}
+
+// ??????
+void Track(void)
+{
+    if(Turning) return;
+
+    // ??????????
+    Check_Special_Turn();
+    
+    if(Left_IRSenor_Track==0 && Right_IRSenor_Track==0)
+    {
+        GoForward();
+        Black_Line_Detected = 1;
+        Debounce_Cnt = 0;
+    }
+    else if(Left_IRSenor_Track==0 && Right_IRSenor_Track==1)
+    {
+        GoRight();
+    }
+    else if(Left_IRSenor_Track==1 && Right_IRSenor_Track==0)
+    {
+        GoLeft();
+    }
+    else if(Left_IRSenor_Track==1 && Right_IRSenor_Track==1)
+    {
+        GoForward();
+        if(Black_Line_Detected == 1)
+        {
+            Debounce_Cnt++;
+            if(Debounce_Cnt > 10)
+            {
+                Line++;
+                Update_Display();  // ????
+                Black_Line_Detected = 0;
+                Debounce_Cnt = 0;
+                
+                // ???:???8???
+                if(Turn_Flag == 0 && Line == 8)
+                {
+                    Stop();
+                    delay_ms(100);
+                    Turn_180();
+                    Turn_Flag = 1;  // ??????
+                    delay_ms(100);
+                }
+                // ???:???16???
+                else if(Turn_Flag == 1 && Line == 16)
+                {
+                    Stop();
+                    while(1)
+                    {
+                        LEDTube_Show();  // ??????16
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ???0???
+void TIMER0_Init(void)
+{
+    TMOD=0x01;
+    TH0=0xFC;
+    TL0=0x18;
+    TR0=1;
+    ET0=1;
+    EA=1;
+}
+
+// ???
+void main(void)
+{
+    P1=0xF0;
+    Update_Display();  // ?????
+    
+    // ??????
+    while(1)
+    {
+        if(P3_7!=1)
+        {
+            delay_ms(50);
+            if(P3_7!=1) break;
+        }
+    }
+    delay_ms(50);
+    TIMER0_Init();
+
+    while(1)
+    {
+        LEDTube_Show();  // ?????
+
+        // ???????,????????
+        // ??????Track()?????Line??????
+        Track();
+    }
+}
+
+// ???0?? PWM??
+void TIMER0_IRQHandler(void) interrupt 1 using 2
+{
+     TH0=0xFC;
+     TL0=0x18;
+     Left_PWM_Value++;
+     Right_PWM_Value++;
+     Left_Motor_PWM_Adjust();
+     Right_Motor_PWM_Adjust();
+}

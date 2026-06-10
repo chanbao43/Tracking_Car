@@ -1,0 +1,21 @@
+# Keil uVision build outputs
+*.OBJ
+*.LST
+*.M51
+*.hex
+*.lnp
+*.build_log.htm
+*.plg
+Track
+
+# Keil user-specific files
+*.uvgui.*
+*_Opt.Bak
+*_Uv2.Bak
+
+# IDE / OS
+.vs/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
