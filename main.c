@@ -21,9 +21,9 @@ sbit P3_7 = P3^7;
 #define Right_IRSenor_Track  P3_3
 
 // 速度
-#define SPEED               11
+#define SPEED              13
 #define SPEED_TURN_INNER    4
-#define SPEED_TURN_OUTER    6
+#define SPEED_TURN_OUTER    5
 #define Left_Motor_PWM      P1_4
 #define Right_Motor_PWM     P1_5
 
@@ -67,10 +67,10 @@ uchar enter_debounce = 0;      // SM_WAIT_BLACK → SM_ON_BLACK 去抖
 uchar leave_debounce = 0;      // SM_ON_BLACK → SM_WAIT_WHITE 去抖
 volatile uint last_line_tick = 0;  // 上次计数时的 sys_tick（方案D 计数锁）
 
-#define DEBOUNCE_COUNT    40   // SM_WAIT_WHITE 去抖阈值（原20，加大到40）
+#define DEBOUNCE_COUNT    16   // SM_WAIT_WHITE 去抖阈值（原20，加大到40）
 #define DEBOUNCE_ENTER     8   // 进入黑线确认 8ms
 #define DEBOUNCE_LEAVE     8   // 离开黑线确认 8ms
-#define MIN_LINE_INTERVAL 380  // 两次计数最小间隔 250ms
+#define MIN_LINE_INTERVAL 180  // 两次计数最小间隔 250ms
 
 #define SM_WAIT_BLACK   0//状态机：等待黑线
 #define SM_ON_BLACK     1//状态机：在黑线上
@@ -86,22 +86,22 @@ bit task_finished = 0;//任务完成使能位
 // ============ 180° 掉头 ============
 volatile bit  uturn_active = 0;//180°转向激活位
 volatile uint uturn_timer = 0;//180°转向计时器
-#define UTURN_DURATION  447//转向延时时间参数
+#define UTURN_DURATION  300//转向延时时间参数
 
 // ============ 90° 转弯 ============
 volatile bit  turn90_active = 0;//90°转向激活位
 volatile uint turn90_timer = 0;//90°转向计时器
 uchar turn90_phase = 0;  // 0=短直行冲线, 1=转弯中
-#define TURN90_FORWARD  150//90°冲线时间参数
-#define TURN90_DURATION 240//90°转弯时间参数
-#define TURN90_PAUSE       300   // Phase 2 短暂停车，消除旋转惯性
-#define TURN90_STABILIZE    125  // Phase 3 稳定直行
+#define TURN90_FORWARD  100//90°冲线时间参数
+#define TURN90_DURATION 190//90°转弯时间参数
+#define TURN90_PAUSE      255   // Phase 2 短暂停车，消除旋转惯性
+#define TURN90_STABILIZE    68  // Phase 3 稳定直行
 uchar last_turn_line = 0;//最近一次转弯线
 
 // ============ 冷却 ============
 volatile bit  cooldown_active = 0;//冷却激活位
 volatile uint cooldown_timer = 0;//冷却计数器
-#define COOLDOWN_PERIOD  400//冷却延时时间参数
+#define COOLDOWN_PERIOD  180//冷却延时时间参数
 
 // ============ 显示缓存 ============
 uchar display_line = 0;//显示缓存
@@ -399,19 +399,11 @@ void Task_Turn90(void)
         if(last_turn_line == 1||last_turn_line == 2||last_turn_line == 5||last_turn_line == 6)
         {
             // Line=6: 速度太快，刹车减速
-            Left_Drive_Value  = 2;
-            Right_Drive_Value = 2;
+            Left_Drive_Value  = 8;
+            Right_Drive_Value = 8;
             Left_Motor_Go;
             Right_Motor_Go;
         }
-//        else
-//        {
-//            // Line=1,2,5: 正常冲线直行
-//            Left_Drive_Value  = SPEED-2;
-//            Right_Drive_Value = SPEED-2;
-//            Left_Motor_Go;
-//            Right_Motor_Go;
-//        }
 
         if(turn90_timer >= TURN90_FORWARD)
         {
